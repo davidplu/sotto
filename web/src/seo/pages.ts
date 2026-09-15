@@ -68,7 +68,7 @@ export const guidePages: SeoPageData[] = [
     terminal: [
       { text: "sotto share STRIPE_SECRET_KEY", kind: "cmd" },
       { text: "share link (acme-api/dev) - burns after 1 view(s):", kind: "dim" },
-      { text: "https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…", kind: "value" },
+      { text: "https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", kind: "value" },
     ],
     faqs: [
       {
@@ -159,7 +159,7 @@ export const guidePages: SeoPageData[] = [
     terminal: [
       { text: "sotto share WIFI_PASSWORD --views 1", kind: "cmd" },
       { text: "share link (acme-api/dev) - burns after 1 view(s):", kind: "dim" },
-      { text: "https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…", kind: "value" },
+      { text: "https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", kind: "value" },
     ],
     faqs: [
       {
@@ -207,7 +207,7 @@ export const guidePages: SeoPageData[] = [
       { text: "set STRIPE_SECRET_KEY (acme-api/dev)", kind: "dim" },
       { text: "sotto share STRIPE_SECRET_KEY", kind: "cmd" },
       { text: "share link (acme-api/dev) - burns after 1 view(s):", kind: "dim" },
-      { text: "https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…", kind: "value" },
+      { text: "https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", kind: "value" },
     ],
     faqs: [
       {
@@ -252,7 +252,7 @@ export const guidePages: SeoPageData[] = [
     terminal: [
       { text: "sotto share WIFI_PASSWORD", kind: "cmd" },
       { text: "share link (acme-api/dev) - burns after 1 view(s):", kind: "dim" },
-      { text: "https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…", kind: "value" },
+      { text: "https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", kind: "value" },
     ],
     faqs: [
       {
@@ -265,7 +265,7 @@ export const guidePages: SeoPageData[] = [
       },
       {
         q: "Can I add a passphrase on top?",
-        a: "Yes. `sotto share --passphrase` prompts for one, so reading the link needs the link and the phrase.",
+        a: "Yes. `sotto share WIFI_PASSWORD --passphrase` prompts for one, so reading the link needs the link and the phrase.",
       },
     ],
     closingTitle: "Stop texting passwords in plain text",
