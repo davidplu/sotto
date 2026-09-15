@@ -1,0 +1,7 @@
+# kind|prefix|version|input|expected
+valid|SK|1|SK1-NENTQ-AXBNE-NTQAX-BNENT-QAXBN-DDBW|abababababababababababababababab
+reject|SK|1|sk1-nentq-axbne-ntqax-bnent-qaxbn-ddbw|key_prefix
+reject|RK|1|SK1-0|key_prefix
+reject|SK|1|SK1-#|invalid_symbol
+reject|SK|1|SK1-0|key_short
+reject|SK|1|SK1-NENTQ-AXBNE-NTQAX-BNENT-QAXBN-DDB0|checksum

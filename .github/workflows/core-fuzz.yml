@@ -1,0 +1,88 @@
+name: Core codec fuzzing
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Campaign profile
+        required: true
+        type: choice
+        options: [pr, nightly]
+        default: pr
+
+permissions:
+  contents: read
+
+jobs:
+  pr:
+    if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.profile == 'pr')
+    name: PR fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [base32_codec, key_strings]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: core-fuzz-cargo-fuzz-0.13.2
+          workspaces: fuzz -> fuzz/target
+      - name: Install pinned fuzz toolchain
+        run: |
+          rustup toolchain install nightly-2025-11-21 --profile minimal
+          cargo +stable install --locked cargo-fuzz --version 0.13.2
+      - name: Run PR fuzz smoke
+        run: scripts/check-core-fuzz --profile pr --target ${{ matrix.target }}
+      - name: Upload fuzz evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-fuzz-pr-${{ matrix.target }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: target/core-fuzz/
+          retention-days: 14
+          if-no-files-found: warn
+
+  nightly:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.profile == 'nightly')
+    name: Nightly fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CORE_FUZZ_SEED: ${{ github.run_id }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [base32_codec, key_strings]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: core-fuzz-cargo-fuzz-0.13.2
+          workspaces: fuzz -> fuzz/target
+      - name: Install pinned fuzz toolchain
+        run: |
+          rustup toolchain install nightly-2025-11-21 --profile minimal
+          cargo +stable install --locked cargo-fuzz --version 0.13.2
+      - name: Run nightly fuzz campaign
+        run: scripts/check-core-fuzz --profile nightly --target ${{ matrix.target }}
+      - name: Upload fuzz evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-fuzz-nightly-${{ matrix.target }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: target/core-fuzz/
+          retention-days: 14
+          if-no-files-found: warn

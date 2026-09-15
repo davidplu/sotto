@@ -117,6 +117,8 @@ authoritative and wins on any discrepancy; each translation says so in its heade
 cargo test --workspace
 ```
 
+- To run the core codec fuzz smoke checks, follow the [fuzzing guide](.ci/core-fuzz.md).
+
 - When working on server or integration behaviour, use the existing crate test harnesses.
 
 - To collect native Rust coverage with database tests enabled, follow the

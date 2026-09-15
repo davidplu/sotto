@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""Run a bounded core codec fuzz campaign and write auditable evidence."""
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import secrets
+import shutil
+import subprocess
+import sys
+import time
+import uuid
+from datetime import datetime, timezone
+
+ROOT = Path(__file__).resolve().parents[1]
+FUZZ_ROOT = ROOT / "fuzz"
+FUZZ_VERSION = "cargo-fuzz 0.13.2"
+TOOLCHAIN = "nightly-2025-11-21"
+TARGETS = {"base32_codec", "key_strings"}
+PROFILES = {"pr": 30, "nightly": 1800}
+PRODUCTION_MAX_PAYLOAD = 4096
+MAX_INPUT = 16384
+MAX_LEN = MAX_INPUT + 1
+FUZZ_SEED = 0x5A17
+MAX_FUZZ_SEED = (1 << 32) - 1
+
+
+class CampaignError(Exception):
+    """The campaign did not produce valid completion evidence."""
+
+
+def command(args, *, timeout=None):
+    return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", choices=sorted(PROFILES), required=True)
+    parser.add_argument("--target", choices=sorted(TARGETS), required=True)
+    parser.add_argument("--replay", type=Path)
+    parser.add_argument("--sanitizer", choices=["address", "none"], default="address")
+    parser.add_argument("--seed", type=lambda value: int(value, 0))
+    parser.add_argument("--corpus", type=Path, help="optional trusted corpus directory to add to tracked seeds")
+    return parser.parse_args(argv)
+
+
+def resolve_seed(profile, requested=None):
+    value = requested
+    if value is None:
+        configured = os.environ.get("CORE_FUZZ_SEED")
+        if configured:
+            try:
+                value = int(configured, 0)
+            except ValueError as error:
+                raise CampaignError("CORE_FUZZ_SEED must be an integer") from error
+    if value is None:
+        value = FUZZ_SEED if profile == "pr" else secrets.randbelow(MAX_FUZZ_SEED) + 1
+    elif value > MAX_FUZZ_SEED:
+        # GitHub run IDs are wider than libFuzzer's 32-bit seed. Hash them into
+        # the accepted range while retaining the run identity in the evidence.
+        value = int.from_bytes(hashlib.sha256(str(value).encode()).digest()[:4], "big") or 1
+    if not 0 < value <= MAX_FUZZ_SEED:
+        raise CampaignError(f"fuzz seed must be between 1 and {MAX_FUZZ_SEED}")
+    return value
+
+
+def ensure_pins():
+    result = command(["cargo", "fuzz", "--version"])
+    if result.returncode != 0 or result.stdout.strip() != FUZZ_VERSION:
+        raise CampaignError(f"expected {FUZZ_VERSION}, got {result.stdout.strip()!r}")
+    if not (FUZZ_ROOT / "Cargo.lock").is_file():
+        raise CampaignError("fuzz/Cargo.lock is missing")
+    config_path = FUZZ_ROOT / "config.json"
+    if not config_path.is_file():
+        raise CampaignError("fuzz/config.json is missing")
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except ValueError as error:
+        raise CampaignError("fuzz/config.json is invalid JSON") from error
+    expected = {
+        "cargo_fuzz": FUZZ_VERSION.removeprefix("cargo-fuzz "),
+        "rust_toolchain": TOOLCHAIN,
+        "targets": sorted(TARGETS),
+        "max_input_bytes": MAX_LEN,
+        "pr_seconds_per_target": PROFILES["pr"],
+        "nightly_seconds_per_target": PROFILES["nightly"],
+    }
+    if any(config.get(key) != value for key, value in expected.items()):
+        raise CampaignError("fuzz/config.json does not match runner pins")
+    rustc = command(["rustc", f"+{TOOLCHAIN}", "--version"])
+    if rustc.returncode != 0 or "rustc " not in rustc.stdout:
+        raise CampaignError(f"expected installed toolchain {TOOLCHAIN}")
+    return rustc.stdout.strip()
+
+
+def sha256_file(path):
+    if not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sha256_tree(path):
+    if not path.is_dir():
+        return None
+    digest = hashlib.sha256()
+    for file in sorted(path.rglob("*")):
+        if file.is_file():
+            relative = str(file.relative_to(path)).encode()
+            contents = file.read_bytes()
+            digest.update(len(relative).to_bytes(8, "big"))
+            digest.update(relative)
+            digest.update(len(contents).to_bytes(8, "big"))
+            digest.update(contents)
+    return digest.hexdigest()
+
+
+def new_evidence(profile, target, output, sanitizer, rng_seed=FUZZ_SEED, corpus_source=None):
+    lockfile = FUZZ_ROOT / "Cargo.lock"
+    config = FUZZ_ROOT / "config.json"
+    corpus = FUZZ_ROOT / "seeds" / target
+    return {
+        "status": "failed",
+        "profile": profile,
+        "target": target,
+        "commit": command(["git", "rev-parse", "HEAD"]).stdout.strip(),
+        "working_tree_dirty": bool(command(["git", "status", "--porcelain"]).stdout.strip()),
+        "tool": FUZZ_VERSION,
+        "toolchain": TOOLCHAIN,
+        "sanitizer": sanitizer,
+        "platform": f"{sys.platform}/{os.uname().machine}",
+        "production_input_max_bytes": PRODUCTION_MAX_PAYLOAD,
+        "fuzzer_input_max_bytes": MAX_LEN,
+        "requested_seconds": PROFILES[profile],
+        "rng_seed": rng_seed,
+        "output": str(output.relative_to(ROOT)),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "outcome": "inconclusive",
+        "config_sha256": sha256_file(config),
+        "lockfile_sha256": sha256_file(lockfile),
+        "starting_corpus_sha256": sha256_tree(corpus),
+        "restored_corpus_sha256": sha256_tree(corpus_source) if corpus_source else None,
+        "workflow": {
+            "run_id": os.environ.get("GITHUB_RUN_ID"),
+            "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+            "workflow": os.environ.get("GITHUB_WORKFLOW"),
+            "sha": os.environ.get("GITHUB_SHA"),
+        },
+    }
+
+
+def write_evidence(path, evidence):
+    path.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
+
+
+def failure_outcome(result):
+    if result.returncode < 0:
+        return "interrupted"
+    output = f"{result.stdout}\n{result.stderr}".lower()
+    if "addresssanitizer" in output or "sanitizer" in output:
+        return "sanitizer_failure"
+    if "assertion" in output or "panicked" in output:
+        return "assertion_failure"
+    return "campaign_failure"
+
+
+def run_campaign(
+    profile, target, output, evidence, sanitizer, replay=None, rng_seed=FUZZ_SEED, corpus_source=None
+):
+    corpus = FUZZ_ROOT / "seeds" / target
+    if not corpus.is_dir():
+        raise CampaignError(f"missing seed corpus for {target}")
+    seed_corpus = output / "corpus"
+    shutil.copytree(corpus, seed_corpus)
+    if corpus_source is not None:
+        if not corpus_source.is_dir():
+            raise CampaignError(f"restored corpus does not exist: {corpus_source}")
+        shutil.copytree(corpus_source, seed_corpus, dirs_exist_ok=True)
+        evidence["campaign_corpus_sha256"] = sha256_tree(seed_corpus)
+    artifacts = output / "artifacts"
+    artifacts.mkdir()
+    replay_results = []
+    if replay is None:
+        for seed in sorted(path for path in corpus.iterdir() if path.is_file()):
+            replay_args = [
+                "cargo", f"+{TOOLCHAIN}", "fuzz", "run", "--sanitizer", sanitizer, target,
+                str(seed), "--", "-runs=1", f"-seed={rng_seed}", f"-max_len={MAX_LEN}", "-timeout=10",
+            ]
+            replay_result = command(replay_args, timeout=120)
+            replay_results.append({"input": seed.name, "exit_code": replay_result.returncode})
+            if replay_result.returncode != 0:
+                evidence["outcome"] = "seed_replay_failure"
+                evidence["seed_replay"] = replay_results
+                raise CampaignError(f"seed replay failed for {seed.name}")
+    evidence["seed_replay"] = replay_results
+    if replay is not None:
+        if not replay.is_file():
+            raise CampaignError(f"replay input does not exist: {replay}")
+        command_args = ["cargo", f"+{TOOLCHAIN}", "fuzz", "run", "--sanitizer", sanitizer, target, str(replay), "--", "-runs=1", f"-seed={rng_seed}", f"-max_len={MAX_LEN}", "-timeout=10"]
+    else:
+        command_args = [
+            "cargo", f"+{TOOLCHAIN}", "fuzz", "run", "--sanitizer", sanitizer, target, str(seed_corpus), "--",
+            f"-artifact_prefix={artifacts}/", f"-max_total_time={PROFILES[profile]}",
+            f"-seed={rng_seed}", f"-max_len={MAX_LEN}", "-timeout=10", "-print_final_stats=1",
+        ]
+    evidence["command"] = command_args
+    started = time.monotonic()
+    result = command(command_args, timeout=PROFILES[profile] + 120)
+    evidence["elapsed_seconds"] = round(time.monotonic() - started, 2)
+    evidence["exit_code"] = result.returncode
+    output_text = result.stdout + "\n" + result.stderr
+    evidence["completed_marker"] = "Done " in output_text
+    evidence["executions"] = _executions(output_text)
+    (output / "stdout.log").write_text(result.stdout, encoding="utf-8")
+    (output / "stderr.log").write_text(result.stderr, encoding="utf-8")
+    if replay is not None:
+        evidence["outcome"] = "replay_passed" if result.returncode == 0 else "replay_failed"
+        evidence["status"] = "passed" if result.returncode == 0 else "failed"
+        if result.returncode != 0:
+            evidence["outcome"] = failure_outcome(result)
+            raise CampaignError(f"replay exited {result.returncode}")
+        return
+    if result.returncode != 0:
+        evidence["outcome"] = failure_outcome(result)
+        raise CampaignError(f"fuzz target exited {result.returncode}")
+    if not evidence["completed_marker"] or not evidence["executions"]:
+        evidence["outcome"] = "incomplete_campaign"
+        raise CampaignError("fuzz target produced no completion marker or execution count")
+    evidence["status"] = "passed"
+    evidence["outcome"] = "campaign_completed"
+
+
+def _executions(stdout):
+    for line in reversed(stdout.splitlines()):
+        if line.startswith("Done "):
+            parts = line.split()
+            if len(parts) >= 2 and parts[1].isdigit():
+                return int(parts[1])
+    return 0
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    output = ROOT / "target" / "core-fuzz" / f"{args.target}-{uuid.uuid4().hex}"
+    output.mkdir(parents=True)
+    evidence_path = output / "run.json"
+    try:
+        rng_seed = resolve_seed(args.profile, args.seed)
+    except CampaignError as error:
+        print(f"core fuzz failed: {error}", file=sys.stderr)
+        return 1
+    evidence = new_evidence(args.profile, args.target, output, args.sanitizer, rng_seed)
+    try:
+        write_evidence(evidence_path, evidence)
+        evidence["rustc_version"] = ensure_pins()
+        run_campaign(
+            args.profile,
+            args.target,
+            output,
+            evidence,
+            args.sanitizer,
+            args.replay,
+            rng_seed,
+            args.corpus,
+        )
+    except (CampaignError, OSError, subprocess.TimeoutExpired) as error:
+        evidence["error"] = str(error)
+        if isinstance(error, subprocess.TimeoutExpired):
+            evidence["outcome"] = "resource_timeout"
+        elif isinstance(error, OSError):
+            evidence["outcome"] = "infrastructure_failure"
+        print(f"core fuzz failed: {error}", file=sys.stderr)
+        try:
+            write_evidence(evidence_path, evidence)
+        except OSError as write_error:
+            print(f"core fuzz evidence write failed: {write_error}", file=sys.stderr)
+        return 1
+    try:
+        write_evidence(evidence_path, evidence)
+    except OSError as error:
+        evidence["outcome"] = "evidence_write_failure"
+        print(f"core fuzz evidence write failed: {error}", file=sys.stderr)
+        return 1
+    print(f"Core fuzz evidence: {output}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

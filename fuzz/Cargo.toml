@@ -1,0 +1,28 @@
+[package]
+name = "sotto-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+
+[dependencies.sotto-core]
+path = "../crates/core"
+
+[[bin]]
+name = "base32_codec"
+path = "fuzz_targets/base32_codec.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "key_strings"
+path = "fuzz_targets/key_strings.rs"
+test = false
+doc = false
+bench = false

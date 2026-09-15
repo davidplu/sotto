@@ -230,4 +230,27 @@ mod tests {
         assert!(matches!(decode_key("RK", 1, &s), Err(Error::KeyPrefix)));
         assert!(matches!(decode_key("SK", 2, &s), Err(Error::KeyPrefix)));
     }
+
+    #[test]
+    fn key_decoder_rejects_each_validation_stage() {
+        assert!(matches!(
+            decode_key("SK", 1, "RK1-0"),
+            Err(Error::KeyPrefix)
+        ));
+        assert!(matches!(
+            decode_key("SK", 1, "SK1-#"),
+            Err(Error::Malformed("invalid base32 symbol"))
+        ));
+        assert!(matches!(
+            decode_key("SK", 1, "SK1-0"),
+            Err(Error::Malformed("key too short"))
+        ));
+        let mut encoded = encode_key("SK", 1, &[0x11; 16]);
+        let last = encoded.pop().expect("encoded key has a body");
+        encoded.push(if last == '0' { '1' } else { '0' });
+        assert!(matches!(
+            decode_key("SK", 1, &encoded),
+            Err(Error::Checksum)
+        ));
+    }
 }

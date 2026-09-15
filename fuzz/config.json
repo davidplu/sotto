@@ -1,0 +1,9 @@
+{
+  "cargo_fuzz": "0.13.2",
+  "rust_toolchain": "nightly-2025-11-21",
+  "targets": ["base32_codec", "key_strings"],
+  "max_input_bytes": 16385,
+  "pr_seconds_per_target": 30,
+  "nightly_seconds_per_target": 1800,
+  "evidence_retention_days": 14
+}

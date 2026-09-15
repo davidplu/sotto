@@ -8,6 +8,15 @@
 
 use wasm_bindgen_test::*;
 
+const FORMAT_FIXTURES: &str = include_str!("../../core/tests/fixtures/format.txt");
+
+fn hex_bytes(hex: &str) -> Vec<u8> {
+    (0..hex.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).expect("fixture hex"))
+        .collect()
+}
+
 /// Runs the shared golden-vector checks (the same function native asserts) inside WASM.
 #[wasm_bindgen_test]
 fn golden_vectors_match_in_wasm() {
@@ -39,6 +48,28 @@ fn decode_key_via_bindings() {
     let bytes = sotto_wasm::format_decode_key("SK", 1, "SK1-NENTQ-AXBNE-NTQAX-BNENT-QAXBN-DDBW")
         .unwrap_or_else(|_| panic!("decode"));
     assert_eq!(bytes, [0xAB; 16]);
+}
+
+#[wasm_bindgen_test]
+fn shared_format_fixtures_match_native_contract() {
+    for line in FORMAT_FIXTURES
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+    {
+        let [kind, prefix, version, input, expected] = line
+            .split('|')
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("fixture columns");
+        let version: u8 = version.parse().expect("fixture version");
+        let result = sotto_wasm::format_decode_key(prefix, version, input);
+        if kind == "valid" {
+            let bytes = result.expect("valid fixture");
+            assert_eq!(bytes, hex_bytes(expected));
+        } else {
+            result.expect_err("rejected fixture");
+        }
+    }
 }
 
 /// Rotation rewrap via the bindings: the untouched ciphertext decrypts under the new key.
