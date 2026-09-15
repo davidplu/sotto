@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { fetchCommunity, type Community } from "./api";
+import { guidePages } from "./seo/pages";
 import "./styles/landing.css";
 
 const REPO = "https://github.com/getsotto/sotto";
@@ -160,12 +161,9 @@ sotto share DATABASE_URL     # one-time link for a single secret`}</code>
 
       <footer>
         <nav aria-label="Guides">
-          <a href="/share-secrets-securely">Share secrets</a>
-          <a href="/share-env-files">Share .env files</a>
-          <a href="/one-time-secret-links">One-time links</a>
-          <a href="/share-api-keys-securely">Share API keys</a>
-          <a href="/send-password-securely">Send passwords</a>
-          <a href="/self-hosted-secret-management">Self-hosting</a>
+          {guidePages.map((page) => (
+            <a key={page.slug} href={`/${page.slug}`}>{page.navLabel}</a>
+          ))}
         </nav>
         <nav aria-label="Footer">
           <a href={REPO}>GitHub</a>
@@ -321,7 +319,7 @@ function Terminal() {
         {"\n"}
         <span className="line l13 dim">{"share link (acme-api/dev) - burns after 1 view(s):"}</span>
         {"\n"}
-        <span className="line l14 value">{"https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…"}</span>
+        <span className="line l14 value">{"https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"}</span>
         {"\n\n"}
         <span className="line l15">
           <span className="prompt">$ </span>

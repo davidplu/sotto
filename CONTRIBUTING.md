@@ -130,6 +130,10 @@ cargo test --workspace
 python3 -B -m unittest discover -s scripts/tests -v
 ```
 
+For the focused encoding and envelope proofs, see the [Kani guide](.ci/kani.md).
+It documents the pinned verifier, reproduction command, input bounds and what the proofs
+do not establish. Keep normal tests alongside those proofs.
+
 ## Supply-chain policy
 
 This repository includes `deny.toml` for dependency and licence checks. Validate the supply-chain policy locally with:

@@ -54,6 +54,15 @@ proptest! {
         prop_assert_eq!(format::decode(&format::encode(&data)).expect("decode"), data);
     }
 
+    /// Arbitrary bounded ASCII strings are either decoded or rejected, never panicked on.
+    /// This exercises malformed symbols, separators and empty input rather than only encoder output.
+    #[test]
+    fn malformed_decode_inputs_do_not_panic(data in bytes(256)) {
+        let input: String = data.into_iter().map(char::from).collect();
+        let _ = format::decode(&input);
+        let _ = format::decode_key("SK", 1, &input);
+    }
+
     /// Versioned, checksummed key strings round-trip for any prefix/version/payload.
     #[test]
     fn key_string_round_trip(payload in prop::collection::vec(any::<u8>(), 1..64), version in any::<u8>()) {

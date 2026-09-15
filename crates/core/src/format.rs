@@ -36,7 +36,8 @@ pub fn decode(s: &str) -> Result<Vec<u8>, Error> {
     let mut out = Vec::with_capacity(s.len() * 5 / 8 + 1);
     let mut acc: u16 = 0;
     let mut bits: u8 = 0;
-    for c in s.chars() {
+    for byte in s.bytes() {
+        let c = char::from(byte);
         if c == '-' {
             continue;
         }
@@ -57,10 +58,13 @@ fn decode_symbol(c: char) -> Option<u8> {
     match u {
         'O' => Some(0),
         'I' | 'L' => Some(1),
-        _ => CROCKFORD_ALPHABET
-            .iter()
-            .position(|&x| x as char == u)
-            .map(|p| p as u8),
+        '0'..='9' => Some(u as u8 - b'0'),
+        'A'..='H' => Some(u as u8 - b'A' + 10),
+        'J'..='K' => Some(u as u8 - b'J' + 18),
+        'M'..='N' => Some(u as u8 - b'M' + 20),
+        'P'..='T' => Some(u as u8 - b'P' + 22),
+        'V'..='Z' => Some(u as u8 - b'V' + 27),
+        _ => None,
     }
 }
 
@@ -118,9 +122,54 @@ fn group(s: &str, n: usize) -> String {
         .join("-")
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Every Unicode scalar gets the documented Crockford symbol mapping or rejection.
+    #[kani::proof]
+    fn decode_symbol_total_and_compatible() {
+        let c: char = kani::any();
+        let upper = c.to_ascii_uppercase();
+        let expected = match upper {
+            'O' => Some(0),
+            'I' | 'L' => Some(1),
+            _ => CROCKFORD_ALPHABET
+                .iter()
+                .position(|&b| char::from(b) == upper)
+                .map(|p| p as u8),
+        };
+        kani::cover!(expected.is_some());
+        kani::cover!(expected.is_none());
+        assert_eq!(decode_symbol(c), expected);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn symbol_decoder_matches_alphabet_for_every_unicode_scalar() {
+        for c in (0..=u32::from(char::MAX)).filter_map(char::from_u32) {
+            let upper = c.to_ascii_uppercase();
+            let expected = match upper {
+                'O' => Some(0),
+                'I' | 'L' => Some(1),
+                _ => CROCKFORD_ALPHABET
+                    .iter()
+                    .position(|&b| char::from(b) == upper)
+                    .map(|p| p as u8),
+            };
+            assert_eq!(decode_symbol(c), expected, "{c:?}");
+            if !c.is_ascii() {
+                assert!(matches!(
+                    decode(&c.to_string()),
+                    Err(Error::Malformed("invalid base32 symbol"))
+                ));
+            }
+        }
+    }
 
     #[test]
     fn alphabet_has_32_symbols_and_no_ambiguous_letters() {

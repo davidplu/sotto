@@ -27,12 +27,16 @@ class CoverageTests(unittest.TestCase):
         main = runpy.run_path(str(self.script))["main"]
         output = Path(self.directory.name).resolve() / "target" / "coverage"
         calls = []
-        # Same top-level shape as the retained LLVM JSON report; the runner checks
-        # availability, not individual line counts or a coverage percentage.
-        summary = {"type": "llvm.coverage.json.export", "version": "2.0.1",
-                   "data": [{"files": [], "totals": {"lines": {
-                       "count": 10, "covered": 8, "percent": 80.0,
-                   }}}]}
+        # Same top-level shape as the retained LLVM JSON report; these totals
+        # drive the workflow job-summary table.
+        summary = {
+            "type": "llvm.coverage.json.export", "version": "2.0.1",
+            "data": [{"files": [], "totals": {
+                "lines": {"count": 10, "covered": 8, "percent": 80.0},
+                "functions": {"count": 5, "covered": 3, "percent": 60.0},
+                "regions": {"count": 20, "covered": 15, "percent": 75.0},
+            }}],
+        }
 
         def command(args, **kwargs):
             calls.append(args)
@@ -55,6 +59,10 @@ class CoverageTests(unittest.TestCase):
                         content = "{"
                     elif failure == "empty data":
                         content = '{"data": []}'
+                    elif failure == "missing metric":
+                        broken = json.loads(json.dumps(summary))
+                        del broken["data"][0]["totals"]["functions"]
+                        content = json.dumps(broken)
                     destination.write_text(content)
                 return None
             self.assertEqual(args, [
@@ -70,7 +78,8 @@ class CoverageTests(unittest.TestCase):
             return None
 
         with patch.dict(main.__globals__, command=command), patch.dict(
-            os.environ, SOTTO_RUN_DB_TESTS="1", DATABASE_URL="postgres://localhost/disposable"
+            os.environ, SOTTO_RUN_DB_TESTS="1", DATABASE_URL="postgres://localhost/disposable",
+            SOTTO_COVERAGE_ARTIFACT="fixture-artifact",
         ), patch("sys.stdout", new_callable=io.StringIO), patch(
             "sys.stderr", new_callable=io.StringIO
         ), patch(
@@ -99,15 +108,30 @@ class CoverageTests(unittest.TestCase):
         ])
         self.assertEqual(evidence["test_and_build_seconds"], 4.0)
         self.assertEqual(evidence["elapsed_seconds"], 10.0)
+        self.assertEqual(evidence["coverage"]["functions"]["covered"], 3)
+        summary = (Path(self.directory.name) / "target/coverage/summary.md").read_text()
+        self.assertIn("| Lines | 8 | 10 | 80.00% |", summary)
+        self.assertIn("| Functions | 3 | 5 | 60.00% |", summary)
+        self.assertIn("| Regions | 15 | 20 | 75.00% |", summary)
+        self.assertIn(
+            "**Measured scope:** native workspace, default features, database tests enabled", summary
+        )
+        self.assertIn("**Important exclusions:** WASM/browser execution;", summary)
+        self.assertIn("**Tool:** `cargo-llvm-cov 0.9.1`", summary)
+        self.assertIn("**Report artifact:** `fixture-artifact`", summary)
 
     def test_failed_or_incomplete_reports_cannot_pass(self):
         for failure in (
-            "report command", "missing summary", "malformed JSON", "empty data", "missing HTML",
+            "report command", "missing summary", "malformed JSON", "empty data", "missing metric",
+            "missing HTML",
         ):
             with self.subTest(failure=failure):
                 result, evidence, _ = self.run_report_fixture(failure)
                 self.assertNotEqual(result, 0)
                 self.assertEqual(evidence["status"], "failed")
+                self.assertFalse(
+                    (Path(self.directory.name) / "target/coverage/summary.md").exists()
+                )
 
     def test_failed_test_run_cannot_leave_successful_evidence(self):
         module = runpy.run_path(str(SCRIPT))

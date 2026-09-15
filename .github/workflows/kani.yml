@@ -1,0 +1,49 @@
+name: Kani proofs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: core parser proofs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: kani-0.67.0
+          workspaces: . -> target/kani
+      - name: Install pinned verifier
+        run: |
+          cargo install --locked kani-verifier --version 0.67.0
+          cargo kani setup
+          test "$(cargo kani --version)" = "cargo-kani 0.67.0"
+      - name: Verify the expected production-code harnesses
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/kani-results
+          cargo kani -p sotto-core --exact \
+            --harness envelope::verification::header_validation_and_slicing \
+            --harness format::verification::decode_symbol_total_and_compatible \
+            --output-format terse -Z unstable-options --harness-timeout 5m --jobs 2 \
+            2>&1 | tee target/kani-results/verification.log
+          git diff --exit-code -- Cargo.lock
+      - name: Retain proof output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: kani-${{ github.sha }}-${{ github.run_attempt }}
+          path: target/kani-results/
+          retention-days: 14
+          if-no-files-found: warn

@@ -47,17 +47,8 @@ pub fn seal(key: &[u8; KEY_LEN], plaintext: &[u8], aad: &[u8]) -> Vec<u8> {
 /// Returns [`Error::Crypto`] on any authentication failure (wrong key, tampered ciphertext, or
 /// mismatched `aad`) - deliberately without distinguishing the cause.
 pub fn open(key: &[u8; KEY_LEN], envelope: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error> {
-    if envelope.len() < 2 + NONCE_LEN {
-        return Err(Error::Malformed("envelope too short"));
-    }
-    let scheme = envelope[0];
-    let alg = envelope[1];
-    if scheme != SCHEME_V1 || Alg::from_u8(alg) != Some(Alg::XChaCha20Poly1305) {
-        return Err(Error::UnsupportedScheme { scheme, alg });
-    }
-
-    let nonce = XNonce::from_slice(&envelope[2..2 + NONCE_LEN]);
-    let ciphertext = &envelope[2 + NONCE_LEN..];
+    let (nonce, ciphertext) = crate::envelope::parse(envelope)?;
+    let nonce = XNonce::from_slice(nonce);
     let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
     cipher
         .decrypt(
@@ -113,5 +104,29 @@ mod tests {
         let k = key();
         let env = seal(&k, b"", b"");
         assert_eq!(open(&k, &env, b"").expect("decrypt"), b"");
+    }
+
+    #[test]
+    fn envelope_validation_preserves_error_order_and_tag_handling() {
+        let key = [0; KEY_LEN];
+        for len in 0..2 + NONCE_LEN {
+            assert!(matches!(
+                open(&key, &vec![0xff; len], b""),
+                Err(Error::Malformed("envelope too short"))
+            ));
+        }
+        let mut envelope = vec![0; 2 + NONCE_LEN];
+        envelope[0] = SCHEME_V1;
+        envelope[1] = 0xff;
+        assert!(matches!(
+            open(&key, &envelope, b""),
+            Err(Error::UnsupportedScheme { .. })
+        ));
+        envelope[1] = Alg::XChaCha20Poly1305 as u8;
+        // A complete header without a tag reaches authentication and keeps its Crypto error.
+        for tag_len in 0..16 {
+            envelope.resize(2 + NONCE_LEN + tag_len, 0);
+            assert!(matches!(open(&key, &envelope, b""), Err(Error::Crypto)));
+        }
     }
 }

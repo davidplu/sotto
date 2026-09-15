@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 import { guidePages, type SeoPageData } from "./src/seo/pages";
-import { faqJsonLd, snapshotFor } from "./src/seo/snapshot";
+import { faqJsonLd, guideLinksHtml, snapshotFor } from "./src/seo/snapshot";
 
 // Strict Content-Security-Policy for the web client. `wasm-unsafe-eval` is required to instantiate
 // WebAssembly; everything else is locked to same-origin with no inline scripts, no embedding, and
@@ -277,7 +278,7 @@ pushed acme-api/dev - revision 1
 
 $ sotto share DATABASE_URL
 share link (acme-api/dev) - burns after 1 view(s):
-https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…
+https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8
 
 $ </code></pre>
 <section id="how"><h2>How it works</h2><ol class="steps"><li><strong>Encrypt locally.</strong> Your vault key is derived on your machine from your master password and secret key. Neither is ever sent anywhere.</li><li><strong>Sync ciphertext.</strong> The server stores and versions encrypted blobs. It never receives a plaintext value or a usable key, so there is nothing on it worth stealing.</li><li><strong>Decrypt on your devices.</strong> One Rust crypto core runs everywhere: the CLI natively, the browser through WebAssembly, with golden vectors in CI proving both produce identical bytes.</li></ol><p>Teams work the same way: sharing an environment grants its key to a member (an X25519 sealed box), so access is cryptographic, not a permission bit on the server. Removing a member rotates the keys.</p></section>
@@ -290,7 +291,7 @@ sotto import .env            # optional: pull in an existing file, still encrypt
 sotto run -- npm start       # inject secrets into any command
 sotto login &amp;&amp; sotto push    # optional: sync ciphertext via getsotto.co.uk
 sotto share DATABASE_URL     # one-time link for a single secret</code></pre><p>Sotto works fully offline until you <code>sotto login</code>. Sync is a feature, not a requirement. The web vault at this address decrypts in your browser, with keys that never leave your devices.</p></section>
-<footer><nav aria-label="Guides"><a href="/share-secrets-securely">Share secrets</a><a href="/share-env-files">Share .env files</a><a href="/one-time-secret-links">One-time links</a><a href="/share-api-keys-securely">Share API keys</a><a href="/send-password-securely">Send passwords</a><a href="/self-hosted-secret-management">Self-hosting</a></nav><nav aria-label="Footer"><a href="https://github.com/getsotto/sotto">GitHub</a><a href="#open-source">Contribute</a><a href="https://github.com/getsotto/sotto/releases">Releases</a><a href="https://github.com/getsotto/sotto/blob/main/THREAT-MODEL.md">Threat model</a><a href="https://github.com/getsotto/sotto/blob/main/SECURITY.md">Security policy</a><a href="https://github.com/getsotto/sotto/blob/main/deploy/README.md">Run your own</a>${statusLink(statusUrl)}<a href="/app">Log in</a></nav><p class="muted">Sotto takes its name from <em>sotto voce</em>: in a low voice, in confidence. Apache-2.0.</p></footer>
+<footer><nav aria-label="Guides">${guideLinksHtml()}</nav><nav aria-label="Footer"><a href="https://github.com/getsotto/sotto">GitHub</a><a href="#open-source">Contribute</a><a href="https://github.com/getsotto/sotto/releases">Releases</a><a href="https://github.com/getsotto/sotto/blob/main/THREAT-MODEL.md">Threat model</a><a href="https://github.com/getsotto/sotto/blob/main/SECURITY.md">Security policy</a><a href="https://github.com/getsotto/sotto/blob/main/deploy/README.md">Run your own</a>${statusLink(statusUrl)}<a href="/app">Log in</a></nav><p class="muted">Sotto takes its name from <em>sotto voce</em>: in a low voice, in confidence. Apache-2.0.</p></footer>
 </main>`;
 
 // Tolerates reformatting of the root div (whitespace, extra attributes) but still fails
@@ -360,8 +361,34 @@ const apiProxy = {
   "/community": api,
 };
 
+// Mirror the Caddyfile's trailing-slash fold for the six guide slugs so `vite preview`
+// (the funnel suite, and anyone previewing a production build) does not serve the homepage
+// snapshot at `/<slug>/`. Keep the slug list sourced from `guidePages`, same as the files
+// the build emits.
+function guideSlashRedirectPlugin(): Plugin {
+  const slugs = new Set(guidePages.map((page) => page.slug));
+  function redirect(req: IncomingMessage, res: ServerResponse, next: () => void): void {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const match = /^\/([^/]+)\/$/.exec(url.pathname);
+    if (match !== null && slugs.has(match[1])) {
+      res.statusCode = 301;
+      res.setHeader("Location", `/${match[1]}${url.search}`);
+      res.end();
+      return;
+    }
+    next();
+  }
+  return {
+    name: "sotto-guide-slash-redirect",
+    configurePreviewServer(server) {
+      // Register before Vite's HTML fallback so `/<slug>/` never becomes index.html.
+      server.middlewares.use(redirect);
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), cspPlugin(), sriPlugin(), seoPrerenderPlugin()],
+  plugins: [react(), cspPlugin(), sriPlugin(), seoPrerenderPlugin(), guideSlashRedirectPlugin()],
   build: { target: "es2022" },
   server: { proxy: apiProxy },
   // Same proxy for `vite preview` (the built production bundle, not dev-server HMR) - the funnel

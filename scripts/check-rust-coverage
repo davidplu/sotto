@@ -13,6 +13,53 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "cargo-llvm-cov 0.9.1"
 EXCLUDE = r"(^|/)(tests|examples)/"
+METRICS = ("lines", "functions", "regions")
+
+
+def parse_coverage_metrics(summary):
+    data = summary.get("data")
+    if not isinstance(data, list) or not data:
+        raise ValueError("coverage summary has no data")
+    totals = data[0].get("totals")
+    if not isinstance(totals, dict):
+        raise ValueError("coverage summary has no totals")
+
+    parsed = {}
+    for name in METRICS:
+        metric = totals.get(name)
+        if not isinstance(metric, dict):
+            raise ValueError(f"coverage summary missing {name} totals")
+        count = metric.get("count")
+        covered = metric.get("covered")
+        percent = metric.get("percent")
+        if (
+            not isinstance(count, int) or isinstance(count, bool)
+            or not isinstance(covered, int) or isinstance(covered, bool)
+            or not isinstance(percent, (int, float)) or isinstance(percent, bool)
+            or count < 0 or covered < 0 or covered > count
+            or percent < 0 or percent > 100
+        ):
+            raise ValueError(f"coverage summary has invalid {name} totals")
+        parsed[name] = {"count": count, "covered": covered, "percent": float(percent)}
+    return parsed
+
+
+def render_coverage_summary(metrics, evidence, artifact_name):
+    rows = []
+    for name in METRICS:
+        metric = metrics[name]
+        rows.append(
+            f"| {name.title()} | {metric['covered']:,} | {metric['count']:,} | "
+            f"{metric['percent']:.2f}% |"
+        )
+    exclusions = "; ".join(evidence["exclusions"])
+    return "\n".join([
+        "## Native Rust coverage", "",
+        "| Metric | Covered | Total | Coverage |", "| --- | ---: | ---: | ---: |",
+        *rows, "", f"**Measured scope:** {evidence['scope']}",
+        f"**Important exclusions:** {exclusions}", f"**Tool:** `{evidence['tool']}`",
+        f"**Report artifact:** `{artifact_name}`", "",
+    ])
 
 
 def command(args, capture=False):
@@ -87,8 +134,15 @@ def main():
             "--output-dir", str(output),
         ])
         summary = json.loads((output / "summary.json").read_text())
-        if not summary.get("data") or not (output / "html" / "index.html").is_file():
+        if not (output / "html" / "index.html").is_file():
             raise ValueError("coverage reports are incomplete")
+        metrics = parse_coverage_metrics(summary)
+        artifact_name = os.environ.get("SOTTO_COVERAGE_ARTIFACT", "local target/coverage")
+        evidence["coverage"] = metrics
+        evidence["artifact"] = artifact_name
+        (output / "summary.md").write_text(
+            render_coverage_summary(metrics, evidence, artifact_name)
+        )
         evidence["status"] = "passed"
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"coverage failed: {error}", file=sys.stderr)

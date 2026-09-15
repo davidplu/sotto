@@ -1,10 +1,42 @@
 import { expect, test } from "@playwright/test";
+import { guidePages } from "../src/seo/pages";
 import {
   fixture,
   loginAndUnlock,
   selectOwnerOrganisation,
   unlockCurrentPage,
 } from "./funnel-helpers";
+
+for (const javaScriptEnabled of [true, false]) {
+  test(`guide navigation follows the central list with scripting ${javaScriptEnabled ? "on" : "off"}`, async ({
+    browser, baseURL,
+  }) => {
+    const context = await browser.newContext({ baseURL, javaScriptEnabled });
+    try {
+      const page = await context.newPage();
+      await page.goto("/");
+      // The static copy button is disabled. Wait for React when scripting is on.
+      if (javaScriptEnabled) await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeEnabled();
+      const nav = page.getByRole("navigation", { name: "Guides", exact: true });
+      const expected = guidePages.map((guide) => ({ href: `/${guide.slug}`, label: guide.navLabel }));
+      const readLinks = () => nav.locator("a").evaluateAll((anchors) => anchors.map((anchor) => ({
+        href: anchor.getAttribute("href"), label: anchor.textContent,
+      })));
+      expect(await readLinks()).toEqual(expected);
+      for (const guide of guidePages) {
+        await page.goto(`/${guide.slug}.html`);
+        await expect(page.getByRole("heading", { name: guide.h1, exact: true })).toBeVisible();
+        expect(await readLinks()).toEqual([
+          ...expected.filter((link) => link.href !== `/${guide.slug}`),
+          { href: "/#pricing", label: "Pricing" },
+          { href: "https://github.com/getsotto/sotto", label: "GitHub" },
+        ]);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+}
 
 // The funnel regression suite (Launch gate 4): login → unlock → TeamPanel invite → Upgrade →
 // checkout handoff → return. See docs/OUTREACH.md and
@@ -253,6 +285,25 @@ test.describe("landing page prerender (no scripting)", () => {
       );
     });
   }
+
+  test("a trailing-slash guide URL redirects to the prerendered page, not the homepage", async ({
+    page,
+  }) => {
+    // One slug stands in for all six: the edge (and vite preview, which mirrors it) must 301
+    // `/<slug>/` onto the canonical clean path before try_files can fall through to index.html.
+    await page.goto("/share-env-files/");
+    await expect(page).toHaveURL(/\/share-env-files$/);
+    await expect(
+      page.getByRole("heading", { name: "Share .env files without the screenshot dance." }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Stop Slacking your .env files." }),
+    ).toHaveCount(0);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      /\/share-env-files$/,
+    );
+  });
 });
 
 test("the status link survives React replacing the snapshot", async ({ page }) => {
@@ -265,19 +316,38 @@ test("the status link survives React replacing the snapshot", async ({ page }) =
   );
 });
 
+test("guide trailing slashes redirect; SPA and .html paths do not", async ({ request }) => {
+  const redirected = await request.get("/share-env-files/", { maxRedirects: 0 });
+  expect(redirected.status()).toBe(301);
+  expect(redirected.headers().location).toMatch(/\/share-env-files$/);
+
+  const html = await request.get("/share-env-files.html", { maxRedirects: 0 });
+  expect(html.status()).toBe(200);
+
+  const app = await request.get("/app/", { maxRedirects: 0 });
+  expect(app.status()).toBe(200);
+
+  const unknown = await request.get("/definitely-not-a-guide/", { maxRedirects: 0 });
+  expect(unknown.status()).toBe(200);
+});
+
 test("guide routes render their page client-side", async ({ page }) => {
-  // The trailing slash is deliberate. vite preview, like the edge, answers `/<slug>` with the
-  // prerendered guide, so a broken router there is caught only if React replaces it before the
-  // assertion looks. `/<slug>/` gets the app shell, whose snapshot is the landing page, so only
-  // the router can put the guide on screen. One route stands in for all six; the per-file
+  // Trailing slash is folded onto the canonical path at the edge (and in vite preview). After
+  // the redirect, React still has to keep the guide on screen rather than replacing the
+  // prerendered copy with the landing page. One route stands in for all six; the per-file
   // content is pinned by the no-scripting tests above.
   await page.goto("/share-env-files/");
+  await expect(page).toHaveURL(/\/share-env-files$/);
   await expect(
     page.getByRole("heading", { name: "Share .env files without the screenshot dance." }),
   ).toBeVisible();
   await expect(
     page.getByText("Do I have to delete my .env file?", { exact: false }),
   ).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    /\/share-env-files$/,
+  );
   // The direct file address renders the same guide: without the suffix strip
   // above, React would replace the prerendered guide with the landing page.
   await page.goto("/share-env-files.html");

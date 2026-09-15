@@ -42,24 +42,15 @@ function terminalHtml(lines: SeoTerminalLine[]): string {
   return `<pre class="term"><code>${rendered.join("\n")}</code></pre>`;
 }
 
-// Short footer labels. Presentational only - the content lives in `pages.ts`.
-const NAV_LABELS: Record<string, string> = {
-  "share-secrets-securely": "Share secrets",
-  "share-env-files": "Share .env files",
-  "one-time-secret-links": "One-time links",
-  "share-api-keys-securely": "Share API keys",
-  "send-password-securely": "Send passwords",
-  "self-hosted-secret-management": "Self-hosting",
-};
+export function guideLinksHtml(excludeSlug?: string): string {
+  return guidePages
+    .filter((page) => page.slug !== excludeSlug)
+    .map((page) => `<a href="/${escapeHtml(page.slug)}">${escapeHtml(page.navLabel)}</a>`)
+    .join("");
+}
 
 function footerHtml(page: SeoPageData): string {
-  const guides = guidePages
-    .filter((other) => other.slug !== page.slug)
-    .map(
-      (other) =>
-        `<a href="/${escapeHtml(other.slug)}">${escapeHtml(NAV_LABELS[other.slug] ?? other.slug)}</a>`,
-    )
-    .join("");
+  const guides = guideLinksHtml(page.slug);
   return `<footer><nav aria-label="Guides">${guides}<a href="/#pricing">Pricing</a><a href="https://github.com/getsotto/sotto">GitHub</a></nav><p class="muted">Sotto: end-to-end encrypted secret sync. Apache-2.0.</p></footer>`;
 }
 

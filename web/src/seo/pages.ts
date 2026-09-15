@@ -28,6 +28,7 @@ export interface SeoTerminalLine {
 
 export interface SeoPageData {
   slug: string;
+  navLabel: string;
   tabTitle: string;
   description: string;
   h1: string;
@@ -44,11 +45,12 @@ export interface SeoPageData {
 export const guidePages: SeoPageData[] = [
   {
     slug: "share-secrets-securely",
+    navLabel: "Share secrets",
     tabTitle: "Sotto: share secrets securely with end-to-end encryption",
     description:
-      "Send passwords, tokens, and keys without pasting them into chat. Encrypted on your machine, readable only by the recipient.",
+      "Send passwords, tokens, and keys without pasting them into chat. Encrypted on your machine and readable through the complete link while it is active.",
     h1: "Share secrets securely.",
-    lead: "Send passwords, tokens, and keys without pasting them into chat, tickets, or email. Sotto encrypts each secret on your machine, so only the person you send it to can read it.",
+    lead: "Send passwords, tokens, and keys without pasting them into chat, tickets, or email. Sotto encrypts each secret on your machine. Anyone with the complete link can use it while it is active. An optional passphrase adds another factor.",
     ctaSecondary: { label: "Try a one-time link", href: "/one-time-secret-links" },
     stepsTitle: "How sharing works",
     steps: [
@@ -68,7 +70,7 @@ export const guidePages: SeoPageData[] = [
     terminal: [
       { text: "sotto share STRIPE_SECRET_KEY", kind: "cmd" },
       { text: "share link (acme-api/dev) - burns after 1 view(s):", kind: "dim" },
-      { text: "https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…", kind: "value" },
+      { text: "https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", kind: "value" },
     ],
     faqs: [
       {
@@ -81,7 +83,7 @@ export const guidePages: SeoPageData[] = [
       },
       {
         q: "What happens once it has been read?",
-        a: "The link burns. Anyone who tries it afterwards gets a message that it is no longer valid, and nothing else.",
+        a: "The link burns. Anyone who tries it afterwards gets a message that it is no longer valid. The server retains the encrypted blob, which it cannot decrypt.",
       },
     ],
     closingTitle: "Stop pasting secrets into chat",
@@ -89,6 +91,7 @@ export const guidePages: SeoPageData[] = [
   },
   {
     slug: "share-env-files",
+    navLabel: "Share .env files",
     tabTitle: "Share .env files with your team, encrypted | Sotto",
     description:
       "Your .env holds every key your app needs. Share it with your team encrypted end to end, never as a screenshot or a Slack paste again.",
@@ -135,11 +138,12 @@ export const guidePages: SeoPageData[] = [
   },
   {
     slug: "one-time-secret-links",
+    navLabel: "One-time links",
     tabTitle: "One-time secret links that burn after reading | Sotto",
     description:
       "Create a link that reveals a secret exactly once, then stops working. No account needed for the recipient.",
     h1: "One-time links that burn after reading.",
-    lead: "Create a link that reveals a secret exactly once, then stops working. Send credentials to a contractor, a client, or a future teammate without leaving a copy in your chat history.",
+    lead: "Create a link that reveals a secret exactly once, then stops working. The complete link is a bearer credential, so anyone who obtains it can use a remaining view unless you also require a passphrase.",
     ctaSecondary: { label: "How sharing works", href: "/share-secrets-securely" },
     stepsTitle: "Send once, read once",
     steps: [
@@ -149,17 +153,17 @@ export const guidePages: SeoPageData[] = [
       },
       {
         head: "Send it anywhere.",
-        body: "Email, chat, ticket. The link is useless to anyone but its first reader.",
+        body: "Email, chat, ticket. Anyone who obtains the complete link can use a remaining view. Add a passphrase when the link alone should not grant access.",
       },
       {
         head: "First view burns it.",
-        body: "Once it is read, the server refuses every later request for it, so a forwarded link reveals nothing. The server never had the key.",
+        body: "Once it is read, the server refuses every later request for it, so a forwarded link reveals nothing. The server retains the encrypted blob after the link is used, but never has the key.",
       },
     ],
     terminal: [
       { text: "sotto share WIFI_PASSWORD --views 1", kind: "cmd" },
       { text: "share link (acme-api/dev) - burns after 1 view(s):", kind: "dim" },
-      { text: "https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…", kind: "value" },
+      { text: "https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", kind: "value" },
     ],
     faqs: [
       {
@@ -172,7 +176,7 @@ export const guidePages: SeoPageData[] = [
       },
       {
         q: "How is this different from emailing the secret?",
-        a: "Email keeps a readable copy forever, in your sent folder and theirs. A burn-after-reading link stops working once it is read, and the server only ever held ciphertext it has no key for.",
+        a: "Email keeps a readable copy forever, in your sent folder and theirs. A burn-after-reading link stops working once it is read. The server retains only ciphertext it cannot decrypt.",
       },
     ],
     closingTitle: "Send your first burning link",
@@ -180,6 +184,7 @@ export const guidePages: SeoPageData[] = [
   },
   {
     slug: "share-api-keys-securely",
+    navLabel: "Share API keys",
     tabTitle: "Share API keys with your team, encrypted | Sotto",
     description:
       "API keys unlock billing, email, and infrastructure. Share them with teammates encrypted end to end, and rotate them in one place.",
@@ -207,7 +212,7 @@ export const guidePages: SeoPageData[] = [
       { text: "set STRIPE_SECRET_KEY (acme-api/dev)", kind: "dim" },
       { text: "sotto share STRIPE_SECRET_KEY", kind: "cmd" },
       { text: "share link (acme-api/dev) - burns after 1 view(s):", kind: "dim" },
-      { text: "https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…", kind: "value" },
+      { text: "https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", kind: "value" },
     ],
     faqs: [
       {
@@ -228,11 +233,12 @@ export const guidePages: SeoPageData[] = [
   },
   {
     slug: "send-password-securely",
+    navLabel: "Send passwords",
     tabTitle: "Send a password securely with a one-time link | Sotto",
     description:
-      "Send a password through a link that stops working after one read. No recipient account, no copy left in chat or email.",
+      "Send a password through a link that stops working after one read, without putting the password in chat or email. No recipient account needed.",
     h1: "Send a password that can only be read once.",
-    lead: "Some secrets belong to one person, once: a wifi password, a door code, a temporary login. Sotto wraps them in a link that burns the first time it is read.",
+    lead: "Some secrets need a short-lived handover: a wifi password, a door code, a temporary login. Sotto wraps them in a link that stops working after its allowed views, without putting the password in chat or email.",
     ctaSecondary: { label: "Try a one-time link", href: "/one-time-secret-links" },
     stepsTitle: "One secret, one view",
     steps: [
@@ -242,7 +248,7 @@ export const guidePages: SeoPageData[] = [
       },
       {
         head: "Send it anywhere.",
-        body: "Text, email, chat. The channel never sees the password, only the link.",
+        body: "Text, email, chat. The channel sees only the complete link, which grants access while active unless you require a passphrase.",
       },
       {
         head: "First view burns it.",
@@ -252,7 +258,7 @@ export const guidePages: SeoPageData[] = [
     terminal: [
       { text: "sotto share WIFI_PASSWORD", kind: "cmd" },
       { text: "share link (acme-api/dev) - burns after 1 view(s):", kind: "dim" },
-      { text: "https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…", kind: "value" },
+      { text: "https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", kind: "value" },
     ],
     faqs: [
       {
@@ -265,7 +271,7 @@ export const guidePages: SeoPageData[] = [
       },
       {
         q: "Can I add a passphrase on top?",
-        a: "Yes. `sotto share --passphrase` prompts for one, so reading the link needs the link and the phrase.",
+        a: "Yes. `sotto share WIFI_PASSWORD --passphrase` prompts for one, so reading the link needs the link and the phrase.",
       },
     ],
     closingTitle: "Stop texting passwords in plain text",
@@ -273,6 +279,7 @@ export const guidePages: SeoPageData[] = [
   },
   {
     slug: "self-hosted-secret-management",
+    navLabel: "Self-hosting",
     tabTitle: "Self-hosted secret management in one command | Sotto",
     description:
       "Run your own secret sync server with one docker compose file. Apache-2.0, ciphertext only, your keys never leave your devices.",
