@@ -277,7 +277,7 @@ pushed acme-api/dev - revision 1
 
 $ sotto share DATABASE_URL
 share link (acme-api/dev) - burns after 1 view(s):
-https://getsotto.co.uk/s/9fK2xQ#k=Vq3TzEjm…
+https://getsotto.co.uk/s/00112233445566778899aabbccddeeff#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8
 
 $ </code></pre>
 <section id="how"><h2>How it works</h2><ol class="steps"><li><strong>Encrypt locally.</strong> Your vault key is derived on your machine from your master password and secret key. Neither is ever sent anywhere.</li><li><strong>Sync ciphertext.</strong> The server stores and versions encrypted blobs. It never receives a plaintext value or a usable key, so there is nothing on it worth stealing.</li><li><strong>Decrypt on your devices.</strong> One Rust crypto core runs everywhere: the CLI natively, the browser through WebAssembly, with golden vectors in CI proving both produce identical bytes.</li></ol><p>Teams work the same way: sharing an environment grants its key to a member (an X25519 sealed box), so access is cryptographic, not a permission bit on the server. Removing a member rotates the keys.</p></section>
