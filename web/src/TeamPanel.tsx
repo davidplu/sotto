@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   createCheckout,
@@ -84,6 +84,7 @@ export function TeamPanel({
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingOutcome] = useState(parseBillingOutcome);
   const [deletionActive, setDeletionActive] = useState(false);
+  const orgLoadGeneration = useRef(0);
 
   useEffect(() => {
     if (billingOutcome !== null) {
@@ -103,6 +104,8 @@ export function TeamPanel({
   }, [master, encPrivateKeys]);
 
   async function selectOrg(no: NamedOrg) {
+    const generation = ++orgLoadGeneration.current;
+    const isCurrent = () => generation === orgLoadGeneration.current;
     setError(null);
     setNotice(null);
     setOpenOrg(no);
@@ -111,18 +114,25 @@ export function TeamPanel({
     setPlan(null);
     setDeletionActive(false);
     try {
-      setMembers(await fetchMembers(no.org.id));
+      const nextMembers = await fetchMembers(no.org.id);
+      if (!isCurrent()) return;
+      setMembers(nextMembers);
       const entitlements = await fetchEntitlements(no.org.id);
+      if (!isCurrent()) return;
       setPlan(entitlements);
       // The audit log is admin/owner-only AND a Team feature; skip the fetch when gated.
       if (
         ["owner", "admin"].includes(no.org.role) &&
         entitlements.effectiveTier === "team"
       ) {
-        setAudit(await fetchAudit(no.org.id));
+        const nextAudit = await fetchAudit(no.org.id);
+        if (!isCurrent()) return;
+        setAudit(nextAudit);
       }
     } catch (e) {
-      setError(message(e));
+      if (isCurrent()) {
+        setError(message(e));
+      }
     }
   }
 
